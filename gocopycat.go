@@ -9,11 +9,12 @@ import (
 	"go/parser"
 	"go/token"
 	"log"
+	"os"
 )
 
 func main() {
 	dir := flag.String("dir", "", "Go source directory to be parsed")
-	pkg := flag.String("pkg", "ast", "Only list declarations in the package")
+	pkg := flag.String("pkg", "", "Only list declarations in the package")
 	flag.Parse()
 
 	if e := listPackages(*dir, *pkg); e != nil {
@@ -75,18 +76,63 @@ func listTypeDecl(name string, decl *ast.GenDecl) error {
 	return nil
 }
 
+// listFuncDecl replaces the body of the function.  For example, suppose that in
+// package yi, there is a function
+//
+// func Foo(a int) error {
+//   the body
+// }
+//
+// listFuncDecl replaces the body but keeps the signature.
+//
+// func Foo(a int) error {
+//    yi.Foo(a)
+// }
+//
 func listFuncDecl(name string, decl *ast.FuncDecl) error {
-	if token.IsExported(decl.Name.Name) {
+	// Only prints exported function, not methods, because methods have been
+	// copied by listTypeDecl using the `type=` syntax.
+	if token.IsExported(decl.Name.Name) && decl.Recv == nil {
 		// Remove body and print signature.
-		decl.Body = nil
-		var sig bytes.Buffer
+		decl.Body = rewriteBody(name, decl)
 		fset := token.NewFileSet()
-		format.Node(&sig, fset, decl)
-
-		// Print a new body that
-		fmt.Printf("%s\n", sig.String())
+		format.Node(os.Stdout, fset, decl)
+		fmt.Println()
 	}
 	return nil
+}
+
+func rewriteBody(name string, decl *ast.FuncDecl) *ast.BlockStmt {
+	return &ast.BlockStmt{
+		Lbrace: token.NoPos,
+		List: []ast.Stmt{
+			&ast.ExprStmt{
+				X: &ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X:   &ast.Ident{Name: name},
+						Sel: decl.Name,
+					},
+					Lparen:   token.NoPos,
+					Args:     args(decl),
+					Ellipsis: token.NoPos,
+					Rparen:   token.NoPos,
+				},
+			},
+		},
+		Rbrace: token.NoPos,
+	}
+}
+
+// args returns a []ast.Expr where each element is a *ast.Ident naming a
+// parameter of the function declaration decl.
+func args(decl *ast.FuncDecl) []ast.Expr {
+	r := make([]ast.Expr, 0)
+	for _, l := range decl.Type.Params.List {
+		for _, n := range l.Names {
+			r = append(r, n)
+		}
+	}
+	return r
 }
 
 func listTypeSpecs(name string, specs []ast.Spec) error {
