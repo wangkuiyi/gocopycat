@@ -1,37 +1,51 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"go/ast"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io"
 	"log"
 	"os"
+	"path"
 )
 
 func main() {
-	dir := flag.String("dir", "", "Go source directory to be parsed")
+	src := flag.String("from", "", "Go source directory to be copied")
 	pkg := flag.String("pkg", "", "Only list declarations in the package")
+	dst := flag.String("to", "", "Where to write output files")
 	flag.Parse()
 
-	if e := listPackages(*dir, *pkg); e != nil {
+	if *dst != "" {
+		os.MkdirAll(*dst, 0755)
+	}
+
+	if e := copyDir(*src, *pkg, *dst); e != nil {
 		log.Fatal(e)
 	}
 }
 
-func listPackages(dir, pkg string) error {
+// copyDir parse Go source files in directory src and generate files with the
+// same names in directory dst.
+//
+// A directory might contain more than one packages, for example,
+// https://golang.org/pkg/go/ast contains ast and ast_test.  Without the
+// parameter pkg, copyDir copycat all files and all packages in src; otherwise,
+// it copycats only files implement the package pkg.
+func copyDir(src, pkg, dst string) error {
+	log.Printf("Copycat %s ...", src)
 	fset := token.NewFileSet() // positions are relative to fset
-	pkgs, e := parser.ParseDir(fset, "/tmp/go/src/go/ast/", nil, 0)
+	pkgs, e := parser.ParseDir(fset, src, nil, 0)
 	if e != nil {
-		return fmt.Errorf("Failed to parse directory %s: %v", dir, e)
+		return fmt.Errorf("Failed to parse directory %s: %v", src, e)
 	}
 
-	for name, p := range pkgs {
-		if name == pkg || pkg == "" {
-			if e := listFiles(name, p); e != nil {
+	for pn, p := range pkgs {
+		if pn == pkg || pkg == "" {
+			if e := copyPackage(pn, p, dst); e != nil {
 				return e
 			}
 		}
@@ -39,23 +53,30 @@ func listPackages(dir, pkg string) error {
 	return nil
 }
 
-func listFiles(name string, pkg *ast.Package) error {
-	for _, file := range pkg.Files {
-		if e := listDeclarations(name, file); e != nil {
+func copyPackage(pn string, pkg *ast.Package, dst string) error {
+	for fn, file := range pkg.Files {
+		e := copyFile(pn, path.Join(dst, path.Base(fn)), file)
+		if e != nil {
 			return e
 		}
 	}
 	return nil
 }
 
-func listDeclarations(name string, file *ast.File) error {
+func copyFile(pn, fn string, file *ast.File) error {
+	o, e := os.Create(fn)
+	if e != nil {
+		return fmt.Errorf("Cannot create output file %s: %v", fn, e)
+	}
+	defer o.Close()
+
 	for _, d := range file.Decls {
 		var e error
 		switch v := d.(type) {
 		case *ast.GenDecl:
-			e = listTypeDecl(name, v)
+			e = copyType(pn, v, o)
 		case *ast.FuncDecl:
-			e = listFuncDecl(name, v)
+			e = copyFunc(pn, v, o)
 		}
 
 		if e != nil {
@@ -65,39 +86,48 @@ func listDeclarations(name string, file *ast.File) error {
 	return nil
 }
 
-func listTypeDecl(name string, decl *ast.GenDecl) error {
+func copyType(pn string, decl *ast.GenDecl, o io.Writer) error {
 	// It is a type declaration, other than import, const, or variable.
 	if decl.Tok == token.TYPE {
-		printComment(decl.Doc)
-		if e := listTypeSpecs(name, decl.Specs); e != nil {
+		if e := copyTypeSpecs(pn, decl.Specs, o); e != nil {
 			return e
 		}
 	}
 	return nil
 }
 
-// listFuncDecl replaces the body of the function.  For example, suppose that in
+func copyTypeSpecs(name string, specs []ast.Spec, o io.Writer) error {
+	for _, s := range specs {
+		v := s.(*ast.TypeSpec)
+		if token.IsExported(v.Name.Name) {
+			fmt.Fprintf(o, "type %s=%s.%s\n", v.Name, name, v.Name)
+		}
+	}
+	return nil
+}
+
+// copyFunc replaces the body of the function.  For example, suppose that in
 // package yi, there is a function
 //
 // func Foo(a int) error {
 //   the body
 // }
 //
-// listFuncDecl replaces the body but keeps the signature.
+// copyFunc replaces the body but keeps the signature.
 //
 // func Foo(a int) error {
 //    yi.Foo(a)
 // }
 //
-func listFuncDecl(name string, decl *ast.FuncDecl) error {
+func copyFunc(name string, decl *ast.FuncDecl, o io.Writer) error {
 	// Only prints exported function, not methods, because methods have been
 	// copied by listTypeDecl using the `type=` syntax.
 	if token.IsExported(decl.Name.Name) && decl.Recv == nil {
 		// Remove body and print signature.
 		decl.Body = rewriteBody(name, decl)
 		fset := token.NewFileSet()
-		format.Node(os.Stdout, fset, decl)
-		fmt.Println()
+		format.Node(o, fset, decl)
+		fmt.Fprintln(o)
 	}
 	return nil
 }
@@ -133,24 +163,4 @@ func args(decl *ast.FuncDecl) []ast.Expr {
 		}
 	}
 	return r
-}
-
-func listTypeSpecs(name string, specs []ast.Spec) error {
-	for _, s := range specs {
-		v := s.(*ast.TypeSpec)
-		if token.IsExported(v.Name.Name) {
-			printComment(v.Comment)
-			fmt.Printf("type %s = %s.%s\n", v.Name, name, v.Name)
-		}
-	}
-	return nil
-}
-
-func printComment(cmt *ast.CommentGroup) {
-	if cmt != nil {
-		fset := token.NewFileSet()
-		var buf bytes.Buffer
-		format.Node(&buf, fset, cmt)
-		fmt.Println(buf.String())
-	}
 }
