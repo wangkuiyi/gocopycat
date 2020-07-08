@@ -72,7 +72,7 @@ func getGoPath() string {
 // in the directory.  For example, for the directory
 // $GOPATH/src/github.com/golang/go/src/pkg/go/ast, the pn could be either ast
 // and ast_test.  It returns the import path by removing the $GOPATH/src/ prefix
-// and repalce the basename by pn, for example
+// and repalce the basename by pn, for example,
 // github.com/golang/go/src/pkg/go/ast_test.
 func fullPkgName(dir, pn string) (string, error) {
 	gosrc, e := filepath.Abs(path.Join(getGoPath(), "src/"))
@@ -115,7 +115,7 @@ func copyFile(pn, fn string, file *ast.File) error {
 	}
 	defer o.Close()
 
-	fmt.Fprintf(o, "package %s\n", pn)
+	fmt.Fprintf(o, "package %s\nimport \"%s\"\n", shortPkgName(pn), pn)
 
 	for _, d := range file.Decls {
 		var e error
@@ -143,11 +143,12 @@ func copyType(pn string, decl *ast.GenDecl, o io.Writer) error {
 	return nil
 }
 
-func copyTypeSpecs(name string, specs []ast.Spec, o io.Writer) error {
+func copyTypeSpecs(pn string, specs []ast.Spec, o io.Writer) error {
 	for _, s := range specs {
 		v := s.(*ast.TypeSpec)
 		if token.IsExported(v.Name.Name) {
-			fmt.Fprintf(o, "type %s=%s.%s\n", v.Name, name, v.Name)
+			fmt.Fprintf(o, "type %s = %s.%s\n",
+				v.Name, shortPkgName(pn), v.Name)
 		}
 	}
 	return nil
@@ -166,12 +167,12 @@ func copyTypeSpecs(name string, specs []ast.Spec, o io.Writer) error {
 //    yi.Foo(a)
 // }
 //
-func copyFunc(name string, decl *ast.FuncDecl, o io.Writer) error {
+func copyFunc(pn string, decl *ast.FuncDecl, o io.Writer) error {
 	// Only prints exported function, not methods, because methods have been
 	// copied by listTypeDecl using the `type=` syntax.
 	if token.IsExported(decl.Name.Name) && decl.Recv == nil {
 		// Remove body and print signature.
-		decl.Body = rewriteBody(name, decl)
+		decl.Body = rewriteBody(shortPkgName(pn), decl)
 		fset := token.NewFileSet()
 		format.Node(o, fset, decl)
 		fmt.Fprintln(o)
@@ -179,14 +180,15 @@ func copyFunc(name string, decl *ast.FuncDecl, o io.Writer) error {
 	return nil
 }
 
-func rewriteBody(name string, decl *ast.FuncDecl) *ast.BlockStmt {
+func rewriteBody(pn string, decl *ast.FuncDecl) *ast.BlockStmt {
 	return &ast.BlockStmt{
 		Lbrace: token.NoPos,
 		List: []ast.Stmt{
 			&ast.ExprStmt{
 				X: &ast.CallExpr{
 					Fun: &ast.SelectorExpr{
-						X:   &ast.Ident{Name: name},
+						X: &ast.Ident{
+							Name: shortPkgName(pn)},
 						Sel: decl.Name,
 					},
 					Lparen:   token.NoPos,
