@@ -28,7 +28,7 @@ am considering a new approach that includes two steps:
 
 1. To change some types and functions, we replace the above inheritances.
 
-## The Solution
+## Tool
 
 To generate the boilerplate code in step 1., I wrote this tool `gocopycat`.  It
 takes a directory in the `$GOPATH` directory hierarchy, which usually defines one
