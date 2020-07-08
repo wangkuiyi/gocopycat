@@ -72,3 +72,9 @@ I run the following commands to copycat Go's `go/ast` package.
    Please be aware of the `-pkg=ast` option -- without it, gocopycat converts
    all source files; with it, gocopycat converts only source files that
    implement the package `ast` and ignores those of `ast_test`.
+
+1. Verify the boilerplate code by building it.
+
+   ```bash
+   go build github.com/wangkuiyi/ast
+   ```
