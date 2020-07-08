@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -11,6 +12,8 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 )
 
 func main() {
@@ -45,12 +48,45 @@ func copyDir(src, pkg, dst string) error {
 
 	for pn, p := range pkgs {
 		if pn == pkg || pkg == "" {
+			pn, e := fullPkgName(src)
+			if e != nil {
+				return e
+			}
 			if e := copyPackage(pn, p, dst); e != nil {
 				return e
 			}
 		}
 	}
 	return nil
+}
+
+func getGoPath() string {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		gopath = build.Default.GOPATH
+	}
+	return gopath
+}
+
+func fullPkgName(dir string) (string, error) {
+	gosrc, e := filepath.Abs(path.Join(getGoPath(), "src/"))
+	if e != nil {
+		return "", e
+	}
+
+	dir, e = filepath.Abs(dir)
+	if e != nil {
+		return "", e
+	}
+
+	if !strings.HasPrefix(dir, gosrc) {
+		return "", fmt.Errorf("We relies on GOPATH %s to derive the full package name of %s; however, GOPATH is not a prefix of the source dir. Please confirm if you have Go source tree in $GOPAHT/src", gosrc, dir)
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(dir, gosrc), "/"), nil
+}
+
+func shortPkgName(full string) string {
+	return path.Base(full)
 }
 
 func copyPackage(pn string, pkg *ast.Package, dst string) error {
@@ -69,6 +105,8 @@ func copyFile(pn, fn string, file *ast.File) error {
 		return fmt.Errorf("Cannot create output file %s: %v", fn, e)
 	}
 	defer o.Close()
+
+	fmt.Fprintf(o, "package %s\n", pn)
 
 	for _, d := range file.Decls {
 		var e error
