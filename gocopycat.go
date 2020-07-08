@@ -57,6 +57,8 @@ func copyDir(src, pkg, dst string) error {
 			}
 		}
 	}
+
+	fmt.Fprintf(os.Stderr, "Done.  Please check output in %s\n", dst)
 	return nil
 }
 
