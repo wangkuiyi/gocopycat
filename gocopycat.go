@@ -39,7 +39,7 @@ func main() {
 // parameter pkg, copyDir copycat all files and all packages in src; otherwise,
 // it copycats only files implement the package pkg.
 func copyDir(src, pkg, dst string) error {
-	log.Printf("Copycat %s ...", src)
+	fmt.Fprintf(os.Stdout, "Copycat directory %s ...\n", src)
 	fset := token.NewFileSet() // positions are relative to fset
 	pkgs, e := parser.ParseDir(fset, src, nil, 0)
 	if e != nil {
@@ -99,6 +99,7 @@ func shortPkgName(full string) string {
 }
 
 func copyPackage(pn string, pkg *ast.Package, dst string) error {
+	fmt.Fprintf(os.Stdout, "  Copycat package %s ...\n", pn)
 	for fn, file := range pkg.Files {
 		e := copyFile(pn, path.Join(dst, path.Base(fn)), file)
 		if e != nil {
@@ -109,6 +110,7 @@ func copyPackage(pn string, pkg *ast.Package, dst string) error {
 }
 
 func copyFile(pn, fn string, file *ast.File) error {
+	fmt.Fprintf(os.Stdout, "    Copycat file %s ...\n", fn)
 	o, e := os.Create(fn)
 	if e != nil {
 		return fmt.Errorf("Cannot create output file %s: %v", fn, e)
