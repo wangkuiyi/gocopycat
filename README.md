@@ -38,7 +38,7 @@ functions, and generate the above boilerplate code.  In particular, for each
 input file in the source directory, it produces a counterpart file in the
 specified output directory.
 
-## Examples
+## Usage
 
 I run the following commands to copycat Go's `go/ast` package.
 
