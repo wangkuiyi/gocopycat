@@ -48,7 +48,7 @@ func copyDir(src, pkg, dst string) error {
 
 	for pn, p := range pkgs {
 		if pn == pkg || pkg == "" {
-			pn, e := fullPkgName(src)
+			pn, e := fullPkgName(src, pn)
 			if e != nil {
 				return e
 			}
@@ -68,7 +68,13 @@ func getGoPath() string {
 	return gopath
 }
 
-func fullPkgName(dir string) (string, error) {
+// fullPkgName takes a directory and a package name parsed from the source code
+// in the directory.  For example, for the directory
+// $GOPATH/src/github.com/golang/go/src/pkg/go/ast, the pn could be either ast
+// and ast_test.  It returns the import path by removing the $GOPATH/src/ prefix
+// and repalce the basename by pn, for example
+// github.com/golang/go/src/pkg/go/ast_test.
+func fullPkgName(dir, pn string) (string, error) {
 	gosrc, e := filepath.Abs(path.Join(getGoPath(), "src/"))
 	if e != nil {
 		return "", e
@@ -82,7 +88,10 @@ func fullPkgName(dir string) (string, error) {
 	if !strings.HasPrefix(dir, gosrc) {
 		return "", fmt.Errorf("We relies on GOPATH %s to derive the full package name of %s; however, GOPATH is not a prefix of the source dir. Please confirm if you have Go source tree in $GOPAHT/src", gosrc, dir)
 	}
-	return strings.TrimPrefix(strings.TrimPrefix(dir, gosrc), "/"), nil
+
+	rel := strings.TrimPrefix(strings.TrimPrefix(dir, gosrc), "/")
+	pkg := path.Join(filepath.Dir(rel), pn)
+	return pkg, nil
 }
 
 func shortPkgName(full string) string {
