@@ -28,12 +28,14 @@ am considering a new approach that includes two steps:
 
 1. To change some types and functions, we replace the above inheritances.
 
-## Tool
+## The Solution
 
 To generate the boilerplate code in step 1., I wrote this tool `gocopycat`.  It
 takes a directory in the `$GOPATH` directory hierarchy, which usually defines one
 or more Go packages, and an optional package name, from the command-line
-options.  Then, it calls Go parser to retrieve global declarations of types and
+options.
+
+Then, it calls Go parser to retrieve global declarations of types and
 functions, and generate the above boilerplate code.  In particular, for each
 input file in the source directory, it produces a counterpart file in the
 specified output directory.
